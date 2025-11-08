@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>JARVIS AI - Cloud</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'jarvis-blue': '#00d4ff',
+                        'jarvis-cyan': '#00ffff',
+                        'jarvis-dark': '#001122',
+                        'jarvis-panel': '#001a33',
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'pulse-fast': 'pulse 0.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600;700&display=swap');
+        
+        * {
+            font-family: 'Rajdhani', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .font-orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #000000 0%, #001122 50%, #000000 100%);
+            background-size: 400% 400%;
+            animation: gradient 15s ease infinite;
+            overflow-x: hidden;
+            height: 100vh;
+            width: 100vw;
+            position: fixed;
+        }
+        
+        @keyframes gradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        .glass-effect {
+            background: rgba(0, 26, 51, 0.4);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+        }
+        
+        .neon-text {
+            text-shadow: 0 0 10px #00d4ff, 0 0 20px #00d4ff;
+        }
+        
+        .neon-border {
+            box-shadow: 0 0 10px #00d4ff, inset 0 0 10px rgba(0, 212, 255, 0.2);
+        }
+        
+        .jarvis-circle {
+            position: relative;
+            animation: pulse-slow 2s ease-in-out infinite;
+        }
+        
+        .jarvis-circle.processing {
+            animation: pulse-fast 0.5s ease-in-out infinite;
+            box-shadow: 0 0 50px #00ffff, inset 0 0 50px rgba(0, 255, 255, 0.4);
+        }
+        
+        #chat-messages {
+            scroll-behavior: smooth;
+            overscroll-behavior: contain;
+        }
+        
+        .scrollbar-custom::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .scrollbar-custom::-webkit-scrollbar-track {
+            background: #001122;
+            border-radius: 3px;
+        }
+        
+        .scrollbar-custom::-webkit-scrollbar-thumb {
+            background: #00d4ff;
+            border-radius: 3px;
+        }
+        
+        .message {
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        .status-dot {
+            animation: blink 1s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        
+        /* Otimizações mobile */
+        @media (max-width: 768px) {
+            .jarvis-circle {
+                width: 120px !important;
+                height: 120px !important;
+            }
+        }
+        
+        /* Previne zoom em double-tap no iOS */
+        button, input {
+            touch-action: manipulation;
+        }
+    </style>
+</head>
+<body class="text-jarvis-blue">
+    <div class="h-screen flex flex-col p-2 gap-2">
+        <!-- Header compacto -->
+        <div class="glass-effect rounded-lg p-3 flex items-center justify-between neon-border">
+            <div class="text-center flex-1">
+                <h1 class="text-xl md:text-2xl font-black font-orbitron neon-text">JARVIS AI</h1>
+                <div class="text-xs text-jarvis-cyan">Cloud 24/7</div>
+            </div>
+            <div class="text-center">
+                <div id="status" class="text-sm font-bold font-orbitron flex items-center gap-2">
+                    <span class="status-dot w-2 h-2 rounded-full bg-green-500" id="status-indicator"></span>
+                    <span id="status-text" class="text-xs">Online</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col gap-2 overflow-hidden min-h-0">
+            <!-- Visual do Jarvis -->
+            <div class="glass-effect rounded-lg p-3 neon-border flex-shrink-0">
+                <div class="flex justify-center items-center">
+                    <div id="jarvis-circle" class="jarvis-circle w-32 h-32 rounded-full border-4 border-jarvis-blue flex items-center justify-center relative">
+                        <div class="absolute inset-0 rounded-full border-2 border-jarvis-cyan opacity-50 animate-ping"></div>
+                        <div id="jarvis-status" class="text-center font-orbitron font-bold text-sm z-10">
+                            PRONTO
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat -->
+            <div class="flex-1 glass-effect rounded-lg flex flex-col overflow-hidden min-h-0 neon-border">
+                <div id="chat-messages" class="flex-1 overflow-y-auto p-3 space-y-2 scrollbar-custom min-h-0"></div>
+                <div class="border-t border-jarvis-blue p-2 flex gap-2 flex-shrink-0">
+                    <input type="text" id="chat-input" 
+                        placeholder="Digite sua mensagem..." 
+                        onkeypress="handleKeyPress(event)"
+                        class="flex-1 bg-jarvis-dark border border-jarvis-blue rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-jarvis-blue">
+                    <button onclick="sendMessage()" 
+                        class="bg-gradient-to-r from-jarvis-blue to-jarvis-cyan text-black font-bold px-4 py-2 rounded-lg active:scale-95 transition-transform uppercase text-sm">
+                        Enviar
+                    </button>
+                </div>
+            </div>
+
+            <!-- Controles de Voz -->
+            <div class="glass-effect rounded-lg p-3 neon-border flex-shrink-0">
+                <h3 class="text-sm font-bold font-orbitron mb-2 text-center">Controles</h3>
+                <button id="voice-btn" onclick="toggleVoiceRecognition()" 
+                    class="w-full bg-gradient-to-r from-jarvis-blue to-jarvis-cyan text-black font-bold py-3 px-4 rounded-lg active:scale-95 transition-transform uppercase mb-2">
+                    🎤 Falar
+                </button>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="quickCommand('Que horas são?')" 
+                        class="bg-gradient-to-r from-green-600 to-green-500 text-white font-bold py-2 px-3 rounded-lg active:scale-95 transition-transform text-xs">
+                        ⏰ Horas
+                    </button>
+                    <button onclick="quickCommand('Que dia é hoje?')" 
+                        class="bg-gradient-to-r from-green-600 to-green-500 text-white font-bold py-2 px-3 rounded-lg active:scale-95 transition-transform text-xs">
+                        📅 Data
+                    </button>
+                    <button onclick="quickCommand('Status do sistema')" 
+                        class="bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold py-2 px-3 rounded-lg active:scale-95 transition-transform text-xs">
+                        💻 Status
+                    </button>
+                    <button onclick="quickCommand('Ajuda')" 
+                        class="bg-gradient-to-r from-purple-600 to-purple-500 text-white font-bold py-2 px-3 rounded-lg active:scale-95 transition-transform text-xs">
+                        ❓ Ajuda
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="glass-effect rounded-lg p-2 text-center neon-border flex-shrink-0">
+            <div class="text-xs font-orbitron neon-text">STARK INDUSTRIES - v2.0</div>
+        </div>
+    </div>
+
+    <script>
+        // Conecta ao servidor
+        const socket = io();
+
+        // Estado
+        let isProcessing = false;
+
+        // Inicialização
+        socket.on('connect', () => {
+            updateStatus('Online', true);
+            addMessage('Sistema', 'Jarvis Cloud conectado! Disponível 24/7 🚀');
+        });
+
+        socket.on('disconnect', () => {
+            updateStatus('Offline', false);
+            addMessage('Sistema', 'Desconectado. Tentando reconectar...');
+        });
+
+        // Status
+        socket.on('status', (data) => {
+            addMessage('Sistema', data.message);
+            if (data.type === 'success') {
+                updateStatus('Online', true);
+            }
+        });
+
+        socket.on('error', (data) => {
+            addMessage('Erro', data.message);
+        });
+
+        function updateStatus(text, active) {
+            document.getElementById('status-text').textContent = text;
+            const indicator = document.getElementById('status-indicator');
+            indicator.className = `status-dot w-2 h-2 rounded-full ${active ? 'bg-green-500' : 'bg-red-500'}`;
+        }
+
+        // Processing
+        socket.on('processing', (data) => {
+            isProcessing = data.status;
+            const circle = document.getElementById('jarvis-circle');
+            const status = document.getElementById('jarvis-status');
+            
+            if (data.status) {
+                circle.classList.add('processing');
+                status.textContent = 'PROCESSANDO';
+            } else {
+                circle.classList.remove('processing');
+                status.textContent = 'PRONTO';
+            }
+        });
+
+        // Mensagens
+        socket.on('jarvis_speech', (data) => {
+            addMessage('Jarvis', data.text);
+        });
+
+        function addMessage(sender, text) {
+            const messages = document.getElementById('chat-messages');
+            const message = document.createElement('div');
+            
+            const colors = {
+                'Você': 'border-l-jarvis-blue bg-blue-900/20',
+                'Jarvis': 'border-l-jarvis-cyan bg-cyan-900/20',
+                'Sistema': 'border-l-gray-500 bg-gray-900/20',
+                'Erro': 'border-l-red-500 bg-red-900/20'
+            };
+            
+            message.className = `message glass-effect rounded p-2 border-l-4 ${colors[sender] || colors['Sistema']}`;
+            
+            const time = new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'});
+            message.innerHTML = `
+                <div class="text-xs text-gray-400 mb-1">${time}</div>
+                <div class="text-white text-sm"><strong class="text-jarvis-blue">${sender}:</strong> ${text}</div>
+            `;
+            
+            messages.appendChild(message);
+            
+            setTimeout(() => {
+                messages.scrollTo({
+                    top: messages.scrollHeight,
+                    behavior: 'smooth'
+                });
+            }, 100);
+        }
+
+        // Chat input
+        function sendMessage() {
+            const input = document.getElementById('chat-input');
+            const text = input.value.trim();
+            if (text && !isProcessing) {
+                addMessage('Você', text);
+                socket.emit('question', { text: text });
+                input.value = '';
+            }
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        function quickCommand(cmd) {
+            if (!isProcessing) {
+                addMessage('Você', cmd);
+                socket.emit('question', { text: cmd });
+            }
+        }
+
+        // Previne zoom em double-tap
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', function (event) {
+            const now = (new Date()).getTime();
+            if (now - lastTouchEnd <= 300) {
+                event.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, false);
+
+        // ============================================
+        // WEB SPEECH API - RECONHECIMENTO DE VOZ
+        // ============================================
+        
+        let recognition = null;
+        let isListening = false;
+        
+        // Inicializa Web Speech API
+        function initSpeechRecognition() {
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                recognition = new SpeechRecognition();
+                
+                recognition.lang = 'pt-BR';
+                recognition.continuous = false;
+                recognition.interimResults = false;
+                recognition.maxAlternatives = 1;
+                
+                recognition.onstart = () => {
+                    isListening = true;
+                    updateVoiceButton(true);
+                    const circle = document.getElementById('jarvis-circle');
+                    const status = document.getElementById('jarvis-status');
+                    circle.classList.add('processing');
+                    status.textContent = 'OUVINDO';
+                    addMessage('Sistema', '🎤 Ouvindo... Fale agora!');
+                };
+                
+                recognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript;
+                    addMessage('Você', transcript);
+                    socket.emit('question', { text: transcript });
+                };
+                
+                recognition.onerror = (event) => {
+                    console.error('Erro no reconhecimento de voz:', event.error);
+                    let errorMsg = 'Erro ao reconhecer voz';
+                    if (event.error === 'no-speech') {
+                        errorMsg = 'Nenhuma fala detectada. Tente novamente.';
+                    } else if (event.error === 'not-allowed') {
+                        errorMsg = 'Permissão de microfone negada. Habilite nas configurações.';
+                    }
+                    addMessage('Erro', errorMsg);
+                };
+                
+                recognition.onend = () => {
+                    isListening = false;
+                    updateVoiceButton(false);
+                    const circle = document.getElementById('jarvis-circle');
+                    const status = document.getElementById('jarvis-status');
+                    circle.classList.remove('processing');
+                    status.textContent = 'PRONTO';
+                };
+                
+                return true;
+            }
+            return false;
+        }
+        
+        function toggleVoiceRecognition() {
+            if (!recognition) {
+                if (!initSpeechRecognition()) {
+                    addMessage('Erro', 'Reconhecimento de voz não suportado neste navegador. Use Chrome ou Edge.');
+                    return;
+                }
+            }
+            
+            if (isListening) {
+                recognition.stop();
+            } else {
+                try {
+                    recognition.start();
+                } catch (error) {
+                    console.error('Erro ao iniciar reconhecimento:', error);
+                    addMessage('Erro', 'Erro ao acessar microfone. Verifique permissões.');
+                }
+            }
+        }
+        
+        function updateVoiceButton(listening) {
+            const btn = document.getElementById('voice-btn');
+            if (listening) {
+                btn.textContent = '⏹ Parar';
+                btn.classList.remove('from-jarvis-blue', 'to-jarvis-cyan');
+                btn.classList.add('from-red-600', 'to-red-500');
+            } else {
+                btn.textContent = '🎤 Falar';
+                btn.classList.remove('from-red-600', 'to-red-500');
+                btn.classList.add('from-jarvis-blue', 'to-jarvis-cyan');
+            }
+        }
+        
+        // Inicializa reconhecimento de voz ao carregar
+        initSpeechRecognition();
+        
+        // ============================================
+        // TEXT-TO-SPEECH - SÍNTESE DE VOZ
+        // ============================================
+        
+        let speechSynthesis = window.speechSynthesis;
+        let isSpeaking = false;
+        
+        function speakText(text) {
+            if (!('speechSynthesis' in window)) {
+                console.log('Text-to-speech não suportado');
+                return;
+            }
+            
+            // Cancela fala anterior se houver
+            if (isSpeaking) {
+                speechSynthesis.cancel();
+            }
+            
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'pt-BR';
+            utterance.rate = 0.9;
+            utterance.pitch = 1.0;
+            utterance.volume = 1.0;
+            
+            // Tenta usar voz masculina em português
+            const voices = speechSynthesis.getVoices();
+            const ptVoice = voices.find(voice => 
+                voice.lang.includes('pt') && voice.name.toLowerCase().includes('male')
+            ) || voices.find(voice => voice.lang.includes('pt'));
+            
+            if (ptVoice) {
+                utterance.voice = ptVoice;
+            }
+            
+            utterance.onstart = () => {
+                isSpeaking = true;
+                const circle = document.getElementById('jarvis-circle');
+                const status = document.getElementById('jarvis-status');
+                circle.classList.add('processing');
+                status.textContent = 'FALANDO';
+            };
+            
+            utterance.onend = () => {
+                isSpeaking = false;
+                const circle = document.getElementById('jarvis-circle');
+                const status = document.getElementById('jarvis-status');
+                circle.classList.remove('processing');
+                status.textContent = 'PRONTO';
+            };
+            
+            speechSynthesis.speak(utterance);
+        }
+        
+        // Carrega vozes (necessário em alguns navegadores)
+        if (speechSynthesis.onvoiceschanged !== undefined) {
+            speechSynthesis.onvoiceschanged = () => {
+                speechSynthesis.getVoices();
+            };
+        }
+        
+        // Modifica recebimento de mensagens para falar resposta
+        const originalJarvisSpeech = socket._callbacks['$jarvis_speech'];
+        socket.off('jarvis_speech');
+        socket.on('jarvis_speech', (data) => {
+            addMessage('Jarvis', data.text);
+            speakText(data.text);
+        });
+        
+        // Mensagem de boas-vindas
+        setTimeout(() => {
+            const welcomeMsg = 'Olá! Sou o Jarvis, seu assistente virtual. Clique no botão FALAR para usar o microfone ou digite sua mensagem. Como posso ajudá-lo?';
+            addMessage('Jarvis', welcomeMsg);
+            speakText(welcomeMsg);
+        }, 1000);
+    </script>
+</body>
+</html>
